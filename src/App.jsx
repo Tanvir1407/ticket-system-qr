@@ -32,6 +32,7 @@ export default function App() {
     try {
       const payload = JSON.parse(scannedData);
       alert("Verifying ticket...");
+      console.log("Payload to verify:", payload);
 
       const res = await fetch("http://192.168.68.109:8000/api/ticket-verify", {
         method: "POST",
@@ -40,6 +41,7 @@ export default function App() {
         },
         body: JSON.stringify(payload),
       });
+      console.log("Response from server:", res);
 
       const data = await res.json();
       setMessage(data?.message || "No message from server");
