@@ -24,7 +24,6 @@ export default function App() {
   const scannerRef = useRef(null);
   const [message, setMessage] = useState("");
 
-  // API কলের ফাংশন, যা এখন বাটন ক্লিক এ কল হবে
   const handleScan = async (scannedData) => {
     if (!scannedData) {
       setMessage("No scanned data to verify.");
