@@ -7,7 +7,7 @@ export default function App() {
   const hasVerifiedRef = useRef(false); // guard to ensure single verify per scan
 
   const [isScanning, setIsScanning] = useState(false);
-  const [verifyStatus, setVerifyStatus] = useState(null); 
+  const [verifyStatus, setVerifyStatus] = useState(null);
   const [isVerifying, setIsVerifying] = useState(false);
 
   // Start QR Scanner
@@ -21,7 +21,7 @@ export default function App() {
     scannerRef.current = new QrScanner(
       videoRef.current,
       async (res) => {
-        if (hasVerifiedRef.current) return; 
+        if (hasVerifiedRef.current) return;
         hasVerifiedRef.current = true;
         const scannedData = typeof res === "string" ? res : res?.data;
         stopScanner();
@@ -30,7 +30,7 @@ export default function App() {
       {
         highlightScanRegion: true,
         highlightCodeOutline: true,
-        preferredCamera: "environment", 
+        preferredCamera: "environment",
       }
     );
 
@@ -82,7 +82,7 @@ export default function App() {
       });
 
       const data = await res.json();
-     
+
       if (data?.status && data?.ticket?.status === "Confirmed") {
         setVerifyStatus("success");
       } else {
@@ -121,7 +121,6 @@ export default function App() {
           muted
           playsInline
         />
-        
         {/* Status Overlay */}
         {(isVerifying || verifyStatus) && (
           <div style={{
@@ -137,9 +136,9 @@ export default function App() {
           }}>
             {isVerifying && (
               <>
-                <div style={{ 
-                  width: 30, 
-                  height: 30, 
+                <div style={{
+                  width: 30,
+                  height: 30,
                   border: "3px solid #f3f3f3",
                   borderTop: "3px solid #0275d8",
                   borderRadius: "50%",
