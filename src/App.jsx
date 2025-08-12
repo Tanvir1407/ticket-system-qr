@@ -1,145 +1,200 @@
-import React, { useState, useEffect, useRef } from "react";
-import {
-  Html5QrcodeScanner,
-  Html5QrcodeSupportedFormats,
-  Html5QrcodeScannerState,
-} from "html5-qrcode";
-
-const CameraIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2">
-    <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
-    <circle cx="12" cy="13" r="3" />
-  </svg>
-);
-
-const StopIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2">
-    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-  </svg>
-);
+import React, { useRef, useState, useEffect } from "react";
+import QrScanner from "qr-scanner";
 
 export default function App() {
-  const [result, setResult] = useState("");
-  const [isScanning, setIsScanning] = useState(false);
+  const videoRef = useRef(null);
   const scannerRef = useRef(null);
-  const [message, setMessage] = useState("");
+  const hasVerifiedRef = useRef(false); // guard to ensure single verify per scan
 
-  const handleScan = async (scannedData) => {
-    if (!scannedData) {
-      setMessage("No scanned data to verify.");
-      return;
-    }
-    try {
-      const payload = JSON.parse(scannedData);
-      alert("Verifying ticket...");
-      console.log("Payload to verify:", payload);
+  const [isScanning, setIsScanning] = useState(false);
+  const [verifyStatus, setVerifyStatus] = useState(null); 
+  const [isVerifying, setIsVerifying] = useState(false);
 
-      const res = await fetch("http://192.168.68.109:8000/api/ticket-verify", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-      console.log("Response from server:", res);
-
-      const data = await res.json();
-      setMessage(data?.message || "No message from server");
-    } catch (error) {
-      console.error("Error verifying ticket:", error);
-      setMessage("Invalid QR code or network error!");
-    }
-  };
-
-  const SCANNER_CONFIG = {
-    fps: 10,
-    qrbox: { width: 250, height: 250 },
-    supportedScanFormats: [Html5QrcodeSupportedFormats.QR_CODE],
-  };
-
+  // Start QR Scanner
   const startScanner = () => {
     if (isScanning) return;
-
+    setVerifyStatus(null);
+    setIsVerifying(false);
+    hasVerifiedRef.current = false;
     setIsScanning(true);
-    setResult("");
-    setMessage("");
 
-    scannerRef.current = new Html5QrcodeScanner("reader", SCANNER_CONFIG, false);
-
-    scannerRef.current.render(
-      (decodedText) => {
-        setResult(decodedText);
+    scannerRef.current = new QrScanner(
+      videoRef.current,
+      async (res) => {
+        if (hasVerifiedRef.current) return; 
+        hasVerifiedRef.current = true;
+        const scannedData = typeof res === "string" ? res : res?.data;
         stopScanner();
+        await handleVerify(scannedData || "");
       },
-      () => {}
+      {
+        highlightScanRegion: true,
+        highlightCodeOutline: true,
+        preferredCamera: "environment", 
+      }
     );
-  };
 
-  const stopScanner = () => {
-    if (
-      scannerRef.current &&
-      scannerRef.current.getState() !== Html5QrcodeScannerState.NOT_STARTED
-    ) {
-      scannerRef.current.stop().then(() => {
-        setIsScanning(false);
-      });
-    } else {
+    scannerRef.current.start().catch((error) => {
+      console.error("Failed to start scanner:", error);
       setIsScanning(false);
-    }
+    });
   };
 
+  // Stop QR Scanner
+  const stopScanner = () => {
+    if (scannerRef.current) {
+      scannerRef.current.stop();
+      scannerRef.current.destroy();
+      scannerRef.current = null;
+    }
+    setIsScanning(false);
+  };
+
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (
-        scannerRef.current &&
-        scannerRef.current.getState() === Html5QrcodeScannerState.SCANNING
-      ) {
-        scannerRef.current.stop().catch(console.error);
+      if (scannerRef.current) {
+        scannerRef.current.stop();
+        scannerRef.current.destroy();
+        scannerRef.current = null;
       }
     };
   }, []);
 
+  // Handle Ticket Verification
+  const handleVerify = async (scanData) => {
+    if (!scanData) return;
+    setIsVerifying(true);
+    try {
+      let payload;
+      try {
+        // Try to parse JSON from QR
+        payload = JSON.parse(scanData);
+      } catch {
+        // If not JSON, assume plain ticket code
+        payload = { ticket_id: scanData };
+      }
+
+      const res = await fetch("http://192.168.68.112:8000/api/ticket-verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+     
+      if (data?.status && data?.ticket?.status === "Confirmed") {
+        setVerifyStatus("success");
+      } else {
+        setVerifyStatus("fail");
+      }
+    } catch (e) {
+      console.error("Verification error:", e);
+      setVerifyStatus("fail");
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
   return (
-    <div className="bg-gray-100 flex items-center justify-center min-h-screen p-4">
-      <div className="bg-white p-6 rounded-xl shadow-lg w-full max-w-md">
-        <h1 className="text-2xl font-bold mb-6 text-center">QR Code Scanner</h1>
+    <div
+      style={{
+        maxWidth: 400,
+        margin: "auto",
+        padding: 20,
+        fontFamily: "Arial, sans-serif",
+      }}
+    >
+      <h1 style={{ textAlign: "center" }}>QR Code Scanner</h1>
 
-        <div id="reader" className="w-full h-80 bg-gray-200 rounded-lg mb-6"></div>
-
-        <button
-          onClick={isScanning ? stopScanner : startScanner}
-          className={`w-full flex items-center justify-center font-medium py-3 px-4 rounded-lg shadow-md transition-colors duration-200 ${
-            isScanning
-              ? "bg-red-600 hover:bg-red-700 text-white"
-              : "bg-blue-600 hover:bg-blue-700 text-white"
-          }`}
-        >
-          {isScanning ? <StopIcon /> : <CameraIcon />}
-          <span className="ml-2">{isScanning ? "Stop Scanning" : "Start Scanning"}</span>
-        </button>
-
-        <div className="mt-6 bg-gray-50 border p-4 rounded-lg">
-          <h2 className="text-lg font-semibold mb-2">Scanned Result:</h2>
-          <p className="break-all">{result || "No result yet."}</p>
-        </div>
-
-        {/* Verify Now Button */}
-        <button
-          onClick={() => handleScan(result)}
-          disabled={!result}
-          className={`mt-4 w-full py-3 rounded-lg font-semibold ${
-            result ? "bg-green-600 hover:bg-green-700 text-white" : "bg-gray-400 cursor-not-allowed"
-          }`}
-        >
-          Verify Now
-        </button>
-
-        {message && (
-          <div className="mt-4 p-3 bg-green-100 text-green-800 rounded">
-            <strong>Verification Message:</strong> {message}
+      {/* Video Feed with Overlay */}
+      <div style={{ position: "relative", width: "100%" }}>
+        <video
+          ref={videoRef}
+          style={{
+            width: "100%",
+            height: 300,
+            backgroundColor: "#ccc",
+            borderRadius: 8,
+            objectFit: "cover",
+          }}
+          muted
+          playsInline
+        />
+        
+        {/* Status Overlay */}
+        {(isVerifying || verifyStatus) && (
+          <div style={{
+            position: "absolute",
+            top: "50%",
+            left: "50%",
+            transform: "translate(-50%, -50%)",
+            backgroundColor: "rgba(0, 0, 0, 0.8)",
+            borderRadius: 10,
+            padding: 20,
+            textAlign: "center",
+            minWidth: 120
+          }}>
+            {isVerifying && (
+              <>
+                <div style={{ 
+                  width: 30, 
+                  height: 30, 
+                  border: "3px solid #f3f3f3",
+                  borderTop: "3px solid #0275d8",
+                  borderRadius: "50%",
+                  animation: "spin 1s linear infinite",
+                  margin: "0 auto 10px"
+                }}></div>
+                <div style={{ color: "white", fontSize: 14 }}>Verifying...</div>
+              </>
+            )}
+            {verifyStatus === "success" && (
+              <>
+                <span style={{ fontSize: 48, color: "#5cb85c" }}>&#10004;</span>
+                <div style={{ color: "#5cb85c", fontSize: 14, marginTop: 5 }}>Ticket Confirmed</div>
+              </>
+            )}
+            {verifyStatus === "fail" && (
+              <>
+                <span style={{ fontSize: 48, color: "#d9534f" }}>&#10008;</span>
+                <div style={{ color: "#d9534f", fontSize: 14, marginTop: 5 }}>Ticket Not Confirmed</div>
+              </>
+            )}
           </div>
         )}
       </div>
+
+      {/* Start Scan Button */}
+      <button
+        onClick={startScanner}
+        disabled={isScanning}
+        style={{
+          marginTop: 10,
+          width: "100%",
+          padding: 12,
+          fontSize: 16,
+          backgroundColor: isScanning ? "#999" : "#0275d8",
+          color: "white",
+          border: "none",
+          borderRadius: 6,
+          cursor: isScanning ? "not-allowed" : "pointer",
+        }}
+      >
+        {isScanning ? "Scanning..." : "Start Scanning"}
+      </button>
+
+
+      {/* CSS Animation for spinner */}
+      <style>
+        {`
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `}
+      </style>
+
     </div>
   );
 }
