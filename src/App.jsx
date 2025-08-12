@@ -9,6 +9,7 @@ export default function App() {
   const [result, setResult] = useState("");
   const [message, setMessage] = useState("");
 
+  // Start QR Scanner
   const startScanner = () => {
     if (isScanning) return;
 
@@ -18,13 +19,15 @@ export default function App() {
 
     scannerRef.current = new QrScanner(
       videoRef.current,
-      (result) => {
-        setResult(result);
+      (res) => {
+        const scannedData = typeof res === "string" ? res : res?.data;
+        setResult(scannedData || "");
         stopScanner();
       },
       {
         highlightScanRegion: true,
         highlightCodeOutline: true,
+        preferredCamera: "environment", // better for mobile scanning
       }
     );
 
@@ -37,6 +40,7 @@ export default function App() {
       });
   };
 
+  // Stop QR Scanner
   const stopScanner = () => {
     if (scannerRef.current) {
       scannerRef.current.stop();
@@ -46,6 +50,7 @@ export default function App() {
     setIsScanning(false);
   };
 
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (scannerRef.current) {
@@ -56,19 +61,30 @@ export default function App() {
     };
   }, []);
 
+  // Handle Ticket Verification
   const handleVerify = async () => {
     if (!result) return;
     try {
-      const payload = JSON.parse(result);
-      const res = await fetch("http://192.168.68.109:8000/api/ticket-verify", {
+      let payload;
+      try {
+        // Try to parse JSON from QR
+        payload = JSON.parse(result);
+      } catch {
+        // If not JSON, assume plain ticket code
+        payload = { ticket_id: result };
+      }
+
+      const res = await fetch("http://192.168.68.112:8000/api/ticket-verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+
       const data = await res.json();
       setMessage(data?.message || "No message from server");
     } catch (e) {
-      setMessage("Verification failed: Invalid QR code or network error.");
+      console.error("Verification error:", e);
+      setMessage(`Verification failed: ${e.message || "Unknown error"}`);
     }
   };
 
@@ -83,6 +99,7 @@ export default function App() {
     >
       <h1 style={{ textAlign: "center" }}>QR Code Scanner</h1>
 
+      {/* Video Feed */}
       <video
         ref={videoRef}
         style={{
@@ -96,6 +113,7 @@ export default function App() {
         playsInline
       />
 
+      {/* Start / Stop Button */}
       <button
         onClick={isScanning ? stopScanner : startScanner}
         style={{
@@ -113,6 +131,7 @@ export default function App() {
         {isScanning ? "Stop Scanning" : "Start Scanning"}
       </button>
 
+      {/* Scan Result */}
       <div
         style={{
           marginTop: 20,
@@ -128,6 +147,7 @@ export default function App() {
         <p>{result || "No result yet."}</p>
       </div>
 
+      {/* Verify Button */}
       <button
         onClick={handleVerify}
         disabled={!result}
@@ -146,6 +166,7 @@ export default function App() {
         Verify Now
       </button>
 
+      {/* Verification Message */}
       {message && (
         <div
           style={{
