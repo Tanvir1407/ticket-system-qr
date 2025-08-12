@@ -74,6 +74,7 @@ export default function App() {
         // If not JSON, assume plain ticket code
         payload = { ticket_id: scanData };
       }
+      // const res = await fetch("https://api.test.tapkori.com/api/ticket-verify", {
 
       const res = await fetch("http://192.168.68.112:8000/api/ticket-verify", {
         method: "POST",
@@ -83,7 +84,7 @@ export default function App() {
 
       const data = await res.json();
 
-      if (data?.status && data?.ticket?.status === "Confirmed") {
+      if (data?.status && data?.ticket?.is_verify) {
         setVerifyStatus("success");
       } else {
         setVerifyStatus("fail");
